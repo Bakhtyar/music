@@ -44,7 +44,7 @@ fun PlaylistsScreen(viewModel: MediaViewModel, onNavigateToPlaylist: (Long) -> U
                 count = "قائمة تشغيل", 
                 icon = Icons.Filled.QueueMusic, 
                 iconTint = Color.White,
-                onClick = { /* onNavigateToPlaylist(playlist.id) */ }
+                onClick = { onNavigateToPlaylist(playlist.id) }
             )
         }
     }

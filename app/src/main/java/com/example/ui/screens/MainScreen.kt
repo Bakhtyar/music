@@ -19,7 +19,7 @@ import com.example.ui.MediaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit) {
+fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavigateToVideoPlayer: (String) -> Unit, onNavigateToPlaylist: (Long) -> Unit) {
     val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
     val selectionMode = selectedItems.isNotEmpty()
     var selectedTab by remember { mutableStateOf(1) } // 0: Videos, 1: Songs, 2: Playlists
@@ -41,15 +41,46 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit) {
                 )
             } else {
                 Column(modifier = Modifier.background(Color(0xFF121212))) {
-                    TopAppBar(
-                        title = { Text("Lark Player", style = MaterialTheme.typography.titleLarge, color = Color.White) },
-                        actions = {
-                            IconButton(onClick = { /* TODO */ }) { Icon(Icons.Filled.Visibility, "Hidden", tint = Color.White) }
-                            IconButton(onClick = { /* TODO */ }) { Icon(Icons.Filled.Sort, "Sort", tint = Color.White) }
-                            IconButton(onClick = { /* TODO */ }) { Icon(Icons.Filled.Search, "Search", tint = Color.White) }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
-                    )
+                    var isSearchActive by remember { mutableStateOf(false) }
+                    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+                    
+                    if (isSearchActive) {
+                        TopAppBar(
+                            title = { 
+                                TextField(
+                                    value = searchQuery,
+                                    onValueChange = { viewModel.setSearchQuery(it) },
+                                    placeholder = { Text("بحث...", color = Color.Gray) },
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(onClick = { 
+                                    isSearchActive = false
+                                    viewModel.setSearchQuery("")
+                                }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
+                        )
+                    } else {
+                        TopAppBar(
+                            title = { Text("Lark Player", style = MaterialTheme.typography.titleLarge, color = Color.White) },
+                            actions = {
+                                IconButton(onClick = { /* Settings */ }) { Icon(Icons.Filled.Settings, "Settings", tint = Color.White) }
+                                IconButton(onClick = { /* Sort */ }) { Icon(Icons.Filled.Sort, "Sort", tint = Color.White) }
+                                IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Filled.Search, "Search", tint = Color.White) }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
+                        )
+                    }
                     TabRow(
                         selectedTabIndex = selectedTab,
                         containerColor = Color(0xFF121212),
@@ -96,6 +127,17 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit) {
                             viewModel.clearSelection()
                         }
                         ActionButton(Icons.Filled.PlaylistAdd, "إضافة إلى") { showPlaylistDialog = true }
+                        if (selectedTab == 0) {
+                            ActionButton(Icons.Filled.MusicVideo, "تحويل لـ MP3") {
+                                val videos = viewModel.rawVideoFiles.value
+                                selectedItems.forEach { path ->
+                                    videos.find { it.filePath == path }?.let { video ->
+                                        viewModel.extractAudioFromVideo(video)
+                                    }
+                                }
+                                viewModel.clearSelection()
+                            }
+                        }
                     }
                 }
             } else {
@@ -105,9 +147,9 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit) {
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFF121212))) {
             when (selectedTab) {
-                0 -> VideoScreen(viewModel)
-                1 -> AudioScreen(viewModel)
-                2 -> PlaylistsScreen(viewModel, onNavigateToPlaylist = {})
+                0 -> VideoScreen(viewModel, onNavigateToVideoPlayer = onNavigateToVideoPlayer)
+                1 -> AudioScreen(viewModel, onNavigateToPlayer)
+                2 -> PlaylistsScreen(viewModel, onNavigateToPlaylist = onNavigateToPlaylist)
             }
         }
     }

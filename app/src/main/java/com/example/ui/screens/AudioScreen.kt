@@ -29,7 +29,7 @@ import com.example.data.MediaModel
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AudioScreen(viewModel: MediaViewModel) {
+fun AudioScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit = {}) {
     val audios by viewModel.audioFiles.collectAsStateWithLifecycle()
     val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
     val selectionMode = selectedItems.isNotEmpty()
@@ -68,6 +68,7 @@ fun AudioScreen(viewModel: MediaViewModel) {
                                 exoPlayer?.seekTo(index, 0)
                                 exoPlayer?.prepare()
                                 exoPlayer?.play()
+                                onNavigateToPlayer()
                             }
                         },
                         onLongClick = { viewModel.toggleSelection(audio.filePath) }

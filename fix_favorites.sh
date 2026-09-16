@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > app/src/main/java/com/example/ui/screens/FavoritesScreen.kt
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -80,3 +81,4 @@ fun FavoritesScreen(viewModel: MediaViewModel) {
         }
     }
 }
+INNER_EOF

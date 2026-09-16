@@ -28,15 +28,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val _videoFiles = MutableStateFlow<List<MediaModel>>(emptyList())
     private val _isExtracting = MutableStateFlow(false)
 
+    val searchQuery = MutableStateFlow("")
+    fun setSearchQuery(query: String) {
+        searchQuery.value = query
+    }
     val audioShuffleMode = repository.getShuffleMode("audio").stateIn(viewModelScope, SharingStarted.Lazily, false)
     val videoShuffleMode = repository.getShuffleMode("video").stateIn(viewModelScope, SharingStarted.Lazily, false)
 
     val audioFiles: StateFlow<List<MediaModel>> = combine(
         _audioFiles,
         repository.hiddenMedia,
+        searchQuery,
         repository.mediaMetadata
-    ) { audios, hidden, metadata ->
-        audios.filter { a -> hidden.none { it.filePath == a.filePath } }
+    ) { audios, hidden, query, metadata ->
+        audios.filter { a -> hidden.none { it.filePath == a.filePath } && a.title.contains(searchQuery.value, ignoreCase = true) }
             .map { a ->
                 val meta = metadata.find { it.filePath == a.filePath }
                 if (meta != null) {
@@ -48,9 +53,10 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     val videoFiles: StateFlow<List<MediaModel>> = combine(
         _videoFiles,
         repository.hiddenMedia,
+        searchQuery,
         repository.mediaMetadata
-    ) { videos, hidden, metadata ->
-        videos.filter { a -> hidden.none { it.filePath == a.filePath } }
+    ) { videos, hidden, query, metadata ->
+        videos.filter { a -> hidden.none { it.filePath == a.filePath } && a.title.contains(searchQuery.value, ignoreCase = true) }
             .map { a ->
                 val meta = metadata.find { it.filePath == a.filePath }
                 if (meta != null) {
@@ -85,6 +91,18 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 repository.addFavorite(media)
             }
+        }
+    }
+
+    fun getPlaylistMediaFiles(playlistId: Long): kotlinx.coroutines.flow.Flow<List<MediaModel>> {
+        return kotlinx.coroutines.flow.combine(
+            repository.getMediaForPlaylist(playlistId),
+            audioFiles,
+            videoFiles
+        ) { crossRefs, audios, videos ->
+            val paths = crossRefs.map { it.filePath }
+            val allMedia = audios + videos
+            allMedia.filter { it.filePath in paths }
         }
     }
 

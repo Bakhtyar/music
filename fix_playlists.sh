@@ -1,0 +1,2 @@
+sed -i 's/onClick = { \/\* onNavigateToPlaylist(playlist.id) \*\/ }/onClick = { onNavigateToPlaylist(playlist.id) }/g' app/src/main/java/com/example/ui/screens/PlaylistsScreen.kt
+sed -i 's/PlaylistsScreen(viewModel, onNavigateToPlaylist = {})/PlaylistsScreen(viewModel, onNavigateToPlaylist = { id -> navController.navigate("playlist_details\/$id") })/g' app/src/main/java/com/example/ui/screens/MainScreen.kt
