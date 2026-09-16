@@ -18,22 +18,13 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Check Folder Structure
-      run: ls -la
+    - name: Generate Missing Gradlew File
+      run: gradle wrapper
 
     - name: Build Android APK
       run: |
-        if [ -f "gradlew" ]; then
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-        elif [ -f "app/gradlew" ]; then
-          cd app
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-        else
-          echo "Error: gradlew file not found in root or app folder!"
-          exit 1
-        fi
+        chmod +x gradlew
+        ./gradlew assembleDebug --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
