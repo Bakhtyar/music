@@ -26,6 +26,9 @@ interface MediaDao {
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun deletePlaylist(id: Long)
 
+    @Query("SELECT * FROM playlist_media ORDER BY addedAt ASC")
+    fun getAllPlaylistMedia(): Flow<List<PlaylistMediaCrossRef>>
+
     @Query("SELECT * FROM playlist_media WHERE playlistId = :playlistId ORDER BY addedAt ASC")
     fun getMediaForPlaylist(playlistId: Long): Flow<List<PlaylistMediaCrossRef>>
 

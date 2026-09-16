@@ -25,6 +25,7 @@ fun AddToPlaylistDialog(
     onDismiss: () -> Unit
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val statsMap by viewModel.playlistStats.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF2C2C2C)) {
@@ -57,9 +58,12 @@ fun AddToPlaylistDialog(
             
             LazyColumn {
                 items(playlists) { playlist ->
+                    val stats = statsMap[playlist.id]
+                    val countStr = if (stats == null || stats.totalCount == 0) "فارغة (0 عنصر)"
+                    else "${stats.audioCount} أغانٍ • ${stats.videoCount} فيديو"
                     ListItem(
                         headlineContent = { Text(playlist.name, color = Color.White) },
-                        supportingContent = { Text("٠ أغنية", color = Color.Gray) },
+                        supportingContent = { Text(countStr, color = Color.Gray) },
                         trailingContent = {
                             Box(modifier = Modifier.size(48.dp).background(Color(0xFF404040), MaterialTheme.shapes.medium), contentAlignment = Alignment.Center) {
                                 Icon(Icons.Filled.QueueMusic, contentDescription = "Playlist", tint = Color.White)

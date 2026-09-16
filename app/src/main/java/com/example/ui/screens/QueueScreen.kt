@@ -1,19 +1,30 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import com.example.data.MediaModel
 import com.example.player.PlayerManager
 import com.example.ui.MediaViewModel
 
@@ -21,14 +32,42 @@ import com.example.ui.MediaViewModel
 @Composable
 fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
     val player = PlayerManager.exoPlayer ?: return
+    var isPlaying by remember { mutableStateOf(player.isPlaying) }
+    var currentUri by remember { mutableStateOf(player.currentMediaItem?.localConfiguration?.uri?.toString()) }
     var repeatMode by remember { mutableStateOf(player.repeatMode) }
     var shuffleMode by remember { mutableStateOf(player.shuffleModeEnabled) }
     val audios by viewModel.audioFiles.collectAsStateWithLifecycle()
-    
-    val queueItems = audios.take(10) // UI mock
+
+    val queueItems = remember { mutableStateListOf<MediaModel>() }
+
+    // Synchronize queue items with player / audios
+    LaunchedEffect(audios) {
+        if (queueItems.isEmpty() && audios.isNotEmpty()) {
+            if (player.mediaItemCount > 0) {
+                val currentList = mutableListOf<MediaModel>()
+                for (i in 0 until player.mediaItemCount) {
+                    val itemUri = player.getMediaItemAt(i).localConfiguration?.uri?.toString()
+                    val found = audios.find { it.uri.toString() == itemUri }
+                    if (found != null) currentList.add(found)
+                }
+                if (currentList.isNotEmpty()) {
+                    queueItems.clear()
+                    queueItems.addAll(currentList)
+                } else {
+                    queueItems.addAll(audios)
+                }
+            } else {
+                queueItems.addAll(audios)
+            }
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                currentUri = mediaItem?.localConfiguration?.uri?.toString()
+            }
             override fun onRepeatModeChanged(mode: Int) { repeatMode = mode }
             override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffleMode = enabled }
         }
@@ -36,52 +75,381 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
         onDispose { player.removeListener(listener) }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF2C1E30))) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(40.dp).background(Color(0xFF403045), MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.MusicNote, null, tint = Color.Gray)
+    val currentPlayingMedia = audios.find { it.uri.toString() == currentUri }
+        ?: queueItems.firstOrNull()
+
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val itemHeightPx = with(density) { 72.dp.toPx() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF1E1422))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        // Top Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onNavigateBack) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "رجوع", tint = Color.White)
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(queueItems.firstOrNull()?.title ?: "", color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Icon(Icons.Filled.PlayArrow, "Play", tint = Color.White)
-        }
-        
-        HorizontalDivider(color = Color.DarkGray)
-        
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("في الانتظار", color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Row {
-                Icon(Icons.Filled.Crop, "Cover", tint = Color.Gray)
-                Spacer(modifier = Modifier.width(16.dp))
-                Icon(Icons.Filled.ColorLens, "Theme", tint = Color.Gray)
+            Text(
+                text = "في الانتظار (${queueItems.size})",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp)
+            )
+            IconButton(onClick = {
+                queueItems.shuffle()
+                player.setMediaItems(queueItems.map { MediaItem.fromUri(it.uri) })
+                player.prepare()
+                player.play()
+            }) {
+                Icon(Icons.Filled.Shuffle, contentDescription = "خلط", tint = Color.White)
             }
         }
-        
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(queueItems) { audio ->
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(40.dp).background(Color(0xFF403045), MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.MusicNote, null, tint = Color.Gray)
+
+        // Currently Playing Card / Bar (شريط الأيقونة الذي يشغل ويوقف الأغنية)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF38233E),
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF553260)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isPlaying) {
+                        Icon(
+                            Icons.Filled.GraphicEq,
+                            contentDescription = "Playing",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.MusicNote,
+                            contentDescription = "Paused",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(audio.title, color = Color.White, maxLines = 1)
-                        Text("Download", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Icon(Icons.Filled.DragHandle, "Drag", tint = Color.Gray)
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = currentPlayingMedia?.title ?: "لا يوجد تشغيل حالي",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = if (isPlaying) "جاري التشغيل الآن" else "متوقف مؤقتاً",
+                        color = if (isPlaying) MaterialTheme.colorScheme.primary else Color.LightGray,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                // Previous button
+                IconButton(onClick = { player.seekToPreviousMediaItem() }) {
+                    Icon(
+                        Icons.Filled.SkipPrevious,
+                        contentDescription = "السابق",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                // Play / Pause toggle button
+                FilledIconButton(
+                    onClick = {
+                        if (isPlaying) {
+                            player.pause()
+                        } else {
+                            if (player.playbackState == Player.STATE_ENDED) {
+                                player.seekTo(0, 0L)
+                            }
+                            player.play()
+                        }
+                    },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "إيقاف" else "تشغيل",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                // Next button
+                IconButton(onClick = { player.seekToNextMediaItem() }) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = "التالي",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
         }
-        
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            IconButton(onClick = { player.shuffleModeEnabled = !shuffleMode }) {
-                Icon(Icons.Filled.Shuffle, "Shuffle", tint = if (shuffleMode) Color.White else Color.Gray)
+
+        // Subheader instructions
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "الأغاني التالية (اسحب للترتيب)",
+                color = Color(0xFFC7B1D0),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = "اضغط للتشغيل",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        HorizontalDivider(color = Color(0xFF33203A), thickness = 1.dp)
+
+        // Reorderable LazyColumn
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        ) {
+            itemsIndexed(queueItems, key = { _, item -> item.filePath }) { index, audio ->
+                val isBeingDragged = draggingIndex == index
+                val isCurrentlyPlaying = audio.uri.toString() == currentUri
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp, horizontal = 8.dp)
+                        .zIndex(if (isBeingDragged) 2f else 0f)
+                        .graphicsLayer {
+                            translationY = if (isBeingDragged) dragOffsetY else 0f
+                            shadowElevation = if (isBeingDragged) 16f else 0f
+                            scaleX = if (isBeingDragged) 1.03f else 1f
+                            scaleY = if (isBeingDragged) 1.03f else 1f
+                        }
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            when {
+                                isBeingDragged -> Color(0xFF5D366B)
+                                isCurrentlyPlaying -> Color(0xFF3A2341)
+                                else -> Color(0xFF28192D)
+                            }
+                        )
+                        .clickable {
+                            val targetIndex = queueItems.indexOf(audio)
+                            if (targetIndex >= 0) {
+                                if (player.mediaItemCount != queueItems.size) {
+                                    player.setMediaItems(queueItems.map { MediaItem.fromUri(it.uri) })
+                                    player.prepare()
+                                }
+                                player.seekTo(targetIndex, 0L)
+                                player.play()
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Index or Playing Icon
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (isCurrentlyPlaying) MaterialTheme.colorScheme.primary else Color(0xFF3D2644)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isCurrentlyPlaying && isPlaying) {
+                            Icon(
+                                Icons.Filled.GraphicEq,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "${index + 1}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Title & Artist
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = audio.title,
+                            color = if (isCurrentlyPlaying) MaterialTheme.colorScheme.primary else Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = if (audio.artist.isNotBlank()) audio.artist else "فنان غير معروف",
+                            color = Color.LightGray,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1
+                        )
+                    }
+
+                    // Drag Handle: Touch and drag up/down to reorder songs
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isBeingDragged) Color(0xFF864A9B) else Color(0xFF3A2442))
+                            .padding(8.dp)
+                            .pointerInput(audio.filePath, index) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        draggingIndex = index
+                                        dragOffsetY = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetY += dragAmount.y
+                                        val currentIndex = draggingIndex ?: return@detectDragGestures
+                                        val threshold = itemHeightPx * 0.5f
+
+                                        if (dragOffsetY > threshold && currentIndex < queueItems.size - 1) {
+                                            val targetIndex = currentIndex + 1
+                                            val item = queueItems.removeAt(currentIndex)
+                                            queueItems.add(targetIndex, item)
+                                            try {
+                                                player.moveMediaItem(currentIndex, targetIndex)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                            draggingIndex = targetIndex
+                                            dragOffsetY -= itemHeightPx
+                                        } else if (dragOffsetY < -threshold && currentIndex > 0) {
+                                            val targetIndex = currentIndex - 1
+                                            val item = queueItems.removeAt(currentIndex)
+                                            queueItems.add(targetIndex, item)
+                                            try {
+                                                player.moveMediaItem(currentIndex, targetIndex)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                            draggingIndex = targetIndex
+                                            dragOffsetY += itemHeightPx
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        draggingIndex = null
+                                        dragOffsetY = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggingIndex = null
+                                        dragOffsetY = 0f
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.DragHandle,
+                            contentDescription = "سحب لإعادة الترتيب",
+                            tint = if (isBeingDragged) Color.White else Color(0xFFD6BFDF),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
-            IconButton(onClick = { player.repeatMode = Player.REPEAT_MODE_ALL }) {
-                Icon(Icons.Filled.Repeat, "Repeat All", tint = if (repeatMode == Player.REPEAT_MODE_ALL) Color.White else Color.Gray)
-            }
-            IconButton(onClick = { player.repeatMode = Player.REPEAT_MODE_ONE }) {
-                Icon(Icons.Filled.RepeatOne, "Repeat One", tint = if (repeatMode == Player.REPEAT_MODE_ONE) Color.White else Color.Gray)
+        }
+
+        // Bottom Controls Bar (Shuffle & Repeat)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF27172C),
+            tonalElevation = 8.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = {
+                    val newShuffle = !shuffleMode
+                    player.shuffleModeEnabled = newShuffle
+                    shuffleMode = newShuffle
+                }) {
+                    Icon(
+                        Icons.Filled.Shuffle,
+                        "خلط",
+                        tint = if (shuffleMode) MaterialTheme.colorScheme.primary else Color.Gray,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                IconButton(onClick = {
+                    val nextRepeat = when (repeatMode) {
+                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                        else -> Player.REPEAT_MODE_OFF
+                    }
+                    player.repeatMode = nextRepeat
+                    repeatMode = nextRepeat
+                }) {
+                    val icon = when (repeatMode) {
+                        Player.REPEAT_MODE_ONE -> Icons.Filled.RepeatOne
+                        Player.REPEAT_MODE_ALL -> Icons.Filled.Repeat
+                        else -> Icons.Filled.Repeat
+                    }
+                    Icon(
+                        icon,
+                        "تكرار",
+                        tint = if (repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.primary else Color.Gray,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                TextButton(onClick = {
+                    queueItems.clear()
+                    player.clearMediaItems()
+                }) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("مسح القائمة", color = Color.LightGray)
+                }
             }
         }
     }

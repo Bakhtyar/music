@@ -19,28 +19,176 @@ import com.example.ui.MediaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavigateToVideoPlayer: (String) -> Unit, onNavigateToPlaylist: (Long) -> Unit) {
+fun MainScreen(
+    viewModel: MediaViewModel,
+    onNavigateToPlayer: () -> Unit,
+    onNavigateToVideoPlayer: (String) -> Unit,
+    onNavigateToPlaylist: (Long) -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToArtists: () -> Unit = {},
+    onNavigateToFavorites: () -> Unit = {}
+) {
+    val themeState by viewModel.themeState.collectAsStateWithLifecycle()
+    val isNightVibes = themeState.style == com.example.ui.theme.AppUIStyle.NIGHT_VIBES
+
     val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
     val selectionMode = selectedItems.isNotEmpty()
     var selectedTab by remember { mutableStateOf(1) } // 0: Videos, 1: Songs, 2: Playlists
+    var nightVibesTab by remember { mutableStateOf(0) } // 0: Home, 1: Explore, 2: Library
     
     val context = LocalContext.current
     var showPlaylistDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
+    if (isNightVibes) {
+        Scaffold(
+            containerColor = Color(0xFF0B0F19),
+            bottomBar = {
+                Column(modifier = Modifier.navigationBarsPadding()) {
+                    if (selectionMode) {
+                        BottomAppBar(
+                            containerColor = Color(0xFF161F30),
+                            contentColor = Color.White
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                ActionButton(Icons.Filled.Delete, "حذف") {
+                                    viewModel.deleteMediaFiles(selectedItems.toList())
+                                    viewModel.clearSelection()
+                                }
+                                ActionButton(Icons.Filled.VisibilityOff, "إخفاء") {
+                                    selectedItems.forEach { viewModel.hideMedia(it) }
+                                    viewModel.clearSelection()
+                                }
+                                ActionButton(Icons.Filled.Share, "مشاركة") {
+                                    val uris = ArrayList(selectedItems.map { android.net.Uri.parse(it) })
+                                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                        type = "audio/*"
+                                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Share"))
+                                    viewModel.clearSelection()
+                                }
+                                ActionButton(Icons.Filled.QueueMusic, "تشغيل تالياً") {
+                                    viewModel.playNextPaths(selectedItems.toList())
+                                    viewModel.clearSelection()
+                                }
+                                ActionButton(Icons.Filled.PlaylistAdd, "إضافة إلى") { showPlaylistDialog = true }
+                            }
+                        }
+                    } else {
+                        MiniPlayer(viewModel, onClick = onNavigateToPlayer)
+                        NavigationBar(
+                            containerColor = Color(0xFF111827),
+                            contentColor = Color.White,
+                            tonalElevation = 8.dp
+                        ) {
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Filled.Home, contentDescription = "الرئيسية") },
+                                label = { Text("الرئيسية") },
+                                selected = nightVibesTab == 0,
+                                onClick = { nightVibesTab = 0 },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFF38BDF8),
+                                    selectedTextColor = Color(0xFF38BDF8),
+                                    indicatorColor = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    unselectedIconColor = Color(0xFF64748B),
+                                    unselectedTextColor = Color(0xFF64748B)
+                                )
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Filled.Explore, contentDescription = "استكشاف") },
+                                label = { Text("استكشاف") },
+                                selected = nightVibesTab == 1,
+                                onClick = { nightVibesTab = 1 },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFF38BDF8),
+                                    selectedTextColor = Color(0xFF38BDF8),
+                                    indicatorColor = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    unselectedIconColor = Color(0xFF64748B),
+                                    unselectedTextColor = Color(0xFF64748B)
+                                )
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Filled.LibraryMusic, contentDescription = "مكتبتك") },
+                                label = { Text("مكتبتك") },
+                                selected = nightVibesTab == 2,
+                                onClick = { nightVibesTab = 2 },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFF38BDF8),
+                                    selectedTextColor = Color(0xFF38BDF8),
+                                    indicatorColor = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    unselectedIconColor = Color(0xFF64748B),
+                                    unselectedTextColor = Color(0xFF64748B)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .background(Color(0xFF0B0F19))
+            ) {
+                when (nightVibesTab) {
+                    0 -> NightVibesHomeScreen(
+                        viewModel = viewModel,
+                        onNavigateToFavorites = onNavigateToFavorites,
+                        onNavigateToPlaylists = {
+                            val firstPlaylist = viewModel.playlists.value.firstOrNull()
+                            if (firstPlaylist != null) onNavigateToPlaylist(firstPlaylist.id)
+                            else nightVibesTab = 2
+                        },
+                        onNavigateToArtists = onNavigateToArtists,
+                        onNavigateToExplore = { nightVibesTab = 1 },
+                        onNavigateToPlayer = onNavigateToPlayer,
+                        onNavigateToPlaylistDetails = onNavigateToPlaylist,
+                        onNavigateToVideos = {
+                            val firstVideo = viewModel.videoFiles.value.firstOrNull()
+                            if (firstVideo != null) onNavigateToVideoPlayer(firstVideo.filePath)
+                            else onNavigateToVideoPlayer("")
+                        }
+                    )
+                    1 -> ExploreScreen(
+                        viewModel = viewModel,
+                        onNavigateToPlayer = onNavigateToPlayer
+                    )
+                    2 -> LibraryScreen(
+                        viewModel = viewModel,
+                        onNavigateToFavorites = onNavigateToFavorites,
+                        onNavigateToPlaylists = {
+                            val firstPlaylist = viewModel.playlists.value.firstOrNull()
+                            if (firstPlaylist != null) onNavigateToPlaylist(firstPlaylist.id)
+                            else selectedTab = 2
+                        },
+                        onNavigateToSettings = onNavigateToSettings,
+                        onNavigateToPlayer = onNavigateToPlayer,
+                        onNavigateToVideos = {
+                            val firstVideo = viewModel.videoFiles.value.firstOrNull()
+                            if (firstVideo != null) onNavigateToVideoPlayer(firstVideo.filePath)
+                            else onNavigateToVideoPlayer("")
+                        }
+                    )
+                }
+            }
+        }
+    } else {
+        Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (selectionMode) {
                 TopAppBar(
-                    title = { Text("${selectedItems.size} محددة", color = Color.White) },
+                    title = { Text("${selectedItems.size} محددة", color = MaterialTheme.colorScheme.onBackground) },
                     navigationIcon = {
                         IconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(Icons.Filled.ArrowForward, "Cancel", tint = Color.White)
+                            Icon(Icons.Filled.ArrowForward, "إلغاء", tint = MaterialTheme.colorScheme.onBackground)
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
             } else {
-                Column(modifier = Modifier.background(Color(0xFF121212))) {
+                Column(modifier = Modifier.background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
                     var isSearchActive by remember { mutableStateOf(false) }
                     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
                     
@@ -50,12 +198,12 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavi
                                 TextField(
                                     value = searchQuery,
                                     onValueChange = { viewModel.setSearchQuery(it) },
-                                    placeholder = { Text("بحث...", color = Color.Gray) },
+                                    placeholder = { Text("بحث...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
+                                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
                                         focusedIndicatorColor = Color.Transparent,
                                         unfocusedIndicatorColor = Color.Transparent
                                     ),
@@ -66,25 +214,31 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavi
                                 IconButton(onClick = { 
                                     isSearchActive = false
                                     viewModel.setSearchQuery("")
-                                }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                                }) { Icon(Icons.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onBackground) }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                         )
                     } else {
                         TopAppBar(
-                            title = { Text("Lark Player", style = MaterialTheme.typography.titleLarge, color = Color.White) },
+                            title = { Text("Lark Player", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground) },
                             actions = {
-                                IconButton(onClick = { /* Settings */ }) { Icon(Icons.Filled.Settings, "Settings", tint = Color.White) }
-                                IconButton(onClick = { /* Sort */ }) { Icon(Icons.Filled.Sort, "Sort", tint = Color.White) }
-                                IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Filled.Search, "Search", tint = Color.White) }
+                                IconButton(onClick = onNavigateToFavorites) { 
+                                    Icon(Icons.Filled.Favorite, "المفضلة", tint = Color(0xFFFF2A6D)) 
+                                }
+                                IconButton(onClick = onNavigateToSettings) { 
+                                    Icon(Icons.Filled.Palette, "السمات والمظهر", tint = MaterialTheme.colorScheme.primary) 
+                                }
+                                IconButton(onClick = { isSearchActive = true }) { 
+                                    Icon(Icons.Filled.Search, "بحث", tint = MaterialTheme.colorScheme.onBackground) 
+                                }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121212))
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                         )
                     }
                     TabRow(
                         selectedTabIndex = selectedTab,
-                        containerColor = Color(0xFF121212),
-                        contentColor = Color.White,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                         indicator = { tabPositions ->
                             if (selectedTab < tabPositions.size) {
                                 TabRowDefaults.Indicator(
@@ -94,16 +248,38 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavi
                             }
                         }
                     ) {
-                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("الفيديوهات") })
-                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("الأغاني") })
-                        Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("قوائم التشغيل") })
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("الفيديوهات") },
+                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("الأغاني") },
+                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            text = { Text("قوائم التشغيل") },
+                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         },
         bottomBar = {
             if (selectionMode) {
-                BottomAppBar(containerColor = Color(0xFF2C1E30), contentColor = Color.White) {
+                BottomAppBar(
+                    modifier = Modifier.navigationBarsPadding(),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         ActionButton(Icons.Filled.Delete, "حذف") {
                             viewModel.deleteMediaFiles(selectedItems.toList())
@@ -145,7 +321,7 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavi
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFF121212))) {
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when (selectedTab) {
                 0 -> VideoScreen(viewModel, onNavigateToVideoPlayer = onNavigateToVideoPlayer)
                 1 -> AudioScreen(viewModel, onNavigateToPlayer)
@@ -164,12 +340,13 @@ fun MainScreen(viewModel: MediaViewModel, onNavigateToPlayer: () -> Unit, onNavi
             }
         )
     }
+    }
 }
 
 @Composable
 fun ActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick).padding(8.dp)) {
-        Icon(icon, contentDescription = label, tint = Color.White)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White)
+        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

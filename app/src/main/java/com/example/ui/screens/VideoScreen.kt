@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import com.example.ui.MediaViewModel
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -66,7 +68,13 @@ fun VideoScreen(viewModel: MediaViewModel, onNavigateToVideoPlayer: (String) -> 
                         modifier = Modifier.size(64.dp, 48.dp).clip(MaterialTheme.shapes.medium).background(Color(0xFF2C2C2C)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.PlayCircleOutline, contentDescription = "Video", tint = Color.Gray)
+                        AsyncImage(
+                            model = video.uri,
+                            contentDescription = "Video Thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Video", tint = Color.White.copy(alpha = 0.8f))
                     }
                 }
 

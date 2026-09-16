@@ -55,7 +55,11 @@ fun MiniPlayer(viewModel: MediaViewModel, onClick: () -> Unit) {
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().background(Color(0xFF2C1E30)).clickable(onClick = onClick)
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF2C1E30))
+            .navigationBarsPadding()
+            .clickable(onClick = onClick)
     ) {
         LinearProgressIndicator(
             progress = { if (duration > 0) currentPosition.toFloat() / duration else 0f },

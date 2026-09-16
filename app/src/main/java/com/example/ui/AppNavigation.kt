@@ -17,7 +17,40 @@ fun AppNavigation(viewModel: MediaViewModel) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         NavHost(navController = navController, startDestination = "main") {
             composable("main") {
-                MainScreen(viewModel, onNavigateToPlayer = { navController.navigate("player") }, onNavigateToVideoPlayer = { uri -> navController.navigate("video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}") }, onNavigateToPlaylist = { id -> navController.navigate("playlist_details/$id") })
+                MainScreen(
+                    viewModel = viewModel,
+                    onNavigateToPlayer = { navController.navigate("player") },
+                    onNavigateToVideoPlayer = { uri ->
+                        navController.navigate("swipe_video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}")
+                    },
+                    onNavigateToPlaylist = { id -> navController.navigate("playlist_details/$id") },
+                    onNavigateToSettings = { navController.navigate("theme_settings") },
+                    onNavigateToArtists = { navController.navigate("artists") },
+                    onNavigateToFavorites = { navController.navigate("favorites") }
+                )
+            }
+            composable("favorites") {
+                FavoritesScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPlayer = { navController.navigate("player") },
+                    onNavigateToVideoPlayer = { uri, pId ->
+                        navController.navigate("swipe_video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}${if (pId != null) "?playlistId=$pId" else ""}")
+                    }
+                )
+            }
+            composable("artists") {
+                ArtistsScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPlayer = { navController.navigate("player") }
+                )
+            }
+            composable("theme_settings") {
+                ThemeSettingsScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable("player") {
                 PlayerScreen(
@@ -30,9 +63,19 @@ fun AppNavigation(viewModel: MediaViewModel) {
             composable("equalizer") {
                 EqualizerScreen(onNavigateBack = { navController.popBackStack() })
             }
-            composable("video_player/{uri}", arguments = listOf(navArgument("uri") { type = NavType.StringType })) {
+            composable("swipe_video_player/{uri}?playlistId={playlistId}", arguments = listOf(
+                navArgument("uri") { type = NavType.StringType },
+                navArgument("playlistId") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )) {
                 val uri = it.arguments?.getString("uri") ?: ""
-                VideoPlayerScreen(uriString = java.net.URLDecoder.decode(uri, "UTF-8"), onNavigateBack = { navController.popBackStack() })
+                val playlistIdStr = it.arguments?.getString("playlistId")
+                val pId = playlistIdStr?.toLongOrNull()
+                com.example.ui.screens.SwipeVideoPlayerScreen(
+                    viewModel = viewModel,
+                    initialUri = java.net.URLDecoder.decode(uri, "UTF-8"),
+                    playlistId = pId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable("playlist_details/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                 val id = it.arguments?.getLong("id") ?: 0L
@@ -40,7 +83,10 @@ fun AppNavigation(viewModel: MediaViewModel) {
                     playlistId = id,
                     viewModel = viewModel,
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToPlayer = { navController.navigate("player") }
+                    onNavigateToPlayer = { navController.navigate("player") },
+                    onNavigateToVideoPlayer = { uri, pId -> 
+                        navController.navigate("swipe_video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}${if (pId != null) "?playlistId=$pId" else ""}") 
+                    }
                 )
             }
             composable("queue") {

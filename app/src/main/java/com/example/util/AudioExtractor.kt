@@ -1,9 +1,11 @@
 package com.example.util
 
+import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -11,11 +13,20 @@ import java.io.File
 import java.nio.ByteBuffer
 
 object AudioExtractor {
-    suspend fun extractAudio(videoPath: String, outputMp3Path: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun extractAudio(
+        context: Context,
+        videoUri: Uri,
+        videoPath: String,
+        outputAudioPath: String
+    ): Boolean = withContext(Dispatchers.IO) {
         val extractor = MediaExtractor()
         var muxer: MediaMuxer? = null
         try {
-            extractor.setDataSource(videoPath)
+            try {
+                extractor.setDataSource(context, videoUri, null)
+            } catch (e: Exception) {
+                extractor.setDataSource(videoPath)
+            }
             
             var audioTrackIndex = -1
             var audioFormat: MediaFormat? = null
@@ -37,8 +48,12 @@ object AudioExtractor {
             
             extractor.selectTrack(audioTrackIndex)
             
-            // Output format MUXER_OUTPUT_MPEG_4 is safest for AAC/audio streams on Android
-            muxer = MediaMuxer(outputMp3Path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val outFile = File(outputAudioPath)
+            outFile.parentFile?.mkdirs()
+            if (outFile.exists()) outFile.delete()
+            
+            // Mux into MPEG-4 container (standard for AAC audio streams)
+            muxer = MediaMuxer(outputAudioPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val muxerAudioTrackIndex = muxer.addTrack(audioFormat)
             muxer.start()
             
@@ -71,8 +86,7 @@ object AudioExtractor {
             true
         } catch (e: Exception) {
             Log.e("AudioExtractor", "Error extracting audio", e)
-            // Clean up the output file if it failed
-            try { File(outputMp3Path).delete() } catch (e2: Exception) {}
+            try { File(outputAudioPath).delete() } catch (e2: Exception) {}
             false
         } finally {
             try { extractor.release() } catch (e: Exception) {}

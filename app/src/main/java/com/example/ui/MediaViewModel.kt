@@ -17,12 +17,55 @@ import java.io.File
 import androidx.media3.common.MediaItem
 import com.example.player.PlayerManager
 
+data class PlaylistStats(
+    val audioCount: Int = 0,
+    val videoCount: Int = 0
+) {
+    val totalCount: Int get() = audioCount + videoCount
+}
+
 class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MediaRepository(
         application,
         AppDatabase.getDatabase(application).mediaDao()
     )
+
+    private val themePreferences = com.example.ui.theme.ThemePreferences(application)
+    val themeState: StateFlow<com.example.ui.theme.AppThemeState> = themePreferences.themeState
+    val customArtState: StateFlow<com.example.ui.theme.CustomArtState> = themePreferences.customArtState
+
+    fun saveCustomImage(type: String, uri: android.net.Uri): String? {
+        return themePreferences.saveCustomImage(type, uri)
+    }
+
+    fun resetCustomImage(type: String) {
+        themePreferences.resetCustomImage(type)
+    }
+
+    fun savePlaylistCover(playlistId: Long, uri: android.net.Uri): String? {
+        return themePreferences.savePlaylistCover(playlistId, uri)
+    }
+
+    fun resetPlaylistCover(playlistId: Long) {
+        themePreferences.resetPlaylistCover(playlistId)
+    }
+
+    fun setThemeMode(mode: com.example.ui.theme.AppThemeMode) {
+        themePreferences.setThemeMode(mode)
+    }
+
+    fun setThemePreset(preset: com.example.ui.theme.ThemePreset) {
+        themePreferences.setThemePreset(preset)
+    }
+
+    fun setLayoutDensity(density: com.example.ui.theme.LayoutDensity) {
+        themePreferences.setLayoutDensity(density)
+    }
+
+    fun setAppUIStyle(style: com.example.ui.theme.AppUIStyle) {
+        themePreferences.setAppUIStyle(style)
+    }
 
     private val _audioFiles = MutableStateFlow<List<MediaModel>>(emptyList())
     private val _videoFiles = MutableStateFlow<List<MediaModel>>(emptyList())
@@ -69,6 +112,26 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     val rawVideoFiles: StateFlow<List<MediaModel>> = _videoFiles
     val favorites = repository.favorites.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val playlists = repository.playlists.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val playlistStats: StateFlow<Map<Long, PlaylistStats>> = combine(
+        repository.allPlaylistMedia,
+        _audioFiles,
+        _videoFiles
+    ) { crossRefs, audios, videos ->
+        val audioPaths = audios.map { it.filePath }.toSet()
+        val videoPaths = videos.map { it.filePath }.toSet()
+        val map = mutableMapOf<Long, PlaylistStats>()
+        crossRefs.forEach { ref ->
+            val cur = map.getOrDefault(ref.playlistId, PlaylistStats())
+            val isAudio = ref.filePath in audioPaths
+            val isVideo = ref.filePath in videoPaths
+            map[ref.playlistId] = cur.copy(
+                audioCount = cur.audioCount + (if (isAudio) 1 else 0),
+                videoCount = cur.videoCount + (if (isVideo) 1 else (if (!isAudio) 1 else 0))
+            )
+        }
+        map
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyMap())
 
     val isExtracting: StateFlow<Boolean> = _isExtracting
 
@@ -124,6 +187,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun removeMediaFromPlaylist(playlistId: Long, filePath: String) {
+        viewModelScope.launch {
+            repository.removeMediaFromPlaylist(playlistId, filePath)
+        }
+    }
+
     fun setShuffle(type: String, shuffle: Boolean) {
         viewModelScope.launch {
             repository.setShuffleMode(type, shuffle)
@@ -171,20 +240,29 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         player.addMediaItems(insertIndex, mediaItems)
     }
 
-    fun extractAudioFromVideo(videoModel: MediaModel) {
+    fun extractAudioFromVideo(videoModel: MediaModel, onComplete: ((Boolean) -> Unit)? = null) {
         if (_isExtracting.value) return
         _isExtracting.value = true
         viewModelScope.launch {
             val context = getApplication<Application>()
-            val dir = File(context.getExternalFilesDir(null), "ExtractedAudio")
+            val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC) ?: context.getExternalFilesDir(null)!!
             if (!dir.exists()) dir.mkdirs()
             
-            val outName = "${videoModel.title}_audio.mp3"
+            val sanitized = videoModel.title.replace(Regex("[^a-zA-Z0-9._\\-\\u0600-\\u06FF ]"), "_").trim()
+            val cleanTitle = if (sanitized.isNotBlank()) sanitized else "audio_${System.currentTimeMillis()}"
+            val outName = "${cleanTitle}_audio.mp3"
             val outFile = File(dir, outName)
             
-            val success = AudioExtractor.extractAudio(videoModel.filePath, outFile.absolutePath)
-            if (success) {
-                loadMedia() // reload to find the new mp3
+            android.widget.Toast.makeText(context, "جاري تحويل الفيديو إلى أغنية MP3...", android.widget.Toast.LENGTH_SHORT).show()
+            val success = AudioExtractor.extractAudio(context, videoModel.uri, videoModel.filePath, outFile.absolutePath)
+            if (success && outFile.exists() && outFile.length() > 0) {
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(outFile.absolutePath), null, null)
+                android.widget.Toast.makeText(context, "تم تحويل وحفظ الأغنية بنجاح في مكتبة الأغاني!", android.widget.Toast.LENGTH_LONG).show()
+                loadMedia() // reload to find the new audio track
+                onComplete?.invoke(true)
+            } else {
+                android.widget.Toast.makeText(context, "فشل تحويل الفيديو. يرجى المحاولة مع ملف آخر.", android.widget.Toast.LENGTH_SHORT).show()
+                onComplete?.invoke(false)
             }
             _isExtracting.value = false
         }

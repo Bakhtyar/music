@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.ArrowBack
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,9 +45,26 @@ fun EqualizerScreen(onNavigateBack: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF2C1E30)).padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("المعدّل", style = MaterialTheme.typography.titleLarge, color = Color.White)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF2C1E30))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("المعدّل", style = MaterialTheme.typography.titleLarge, color = Color.White)
+            }
             Switch(checked = isEnabled, onCheckedChange = { isEnabled = it; equalizer.enabled = it })
         }
         

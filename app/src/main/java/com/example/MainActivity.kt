@@ -15,6 +15,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import coil.ImageLoader
+import coil.compose.LocalImageLoader
+import coil.decode.VideoFrameDecoder
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.player.PlaybackService
 import com.example.ui.AppNavigation
 import com.example.ui.MediaViewModel
@@ -35,7 +41,16 @@ class MainActivity : ComponentActivity() {
         startService(serviceIntent)
 
         setContent {
-            MyApplicationTheme {
+            val imageLoader = ImageLoader.Builder(this)
+                .components {
+                    add(VideoFrameDecoder.Factory())
+                }
+                .crossfade(true)
+                .build()
+                
+            CompositionLocalProvider(LocalImageLoader provides imageLoader) {
+                val currentThemeState by viewModel.themeState.collectAsStateWithLifecycle()
+                MyApplicationTheme(appThemeState = currentThemeState) {
                 val permissions = mutableListOf<String>()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
@@ -52,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     PermissionRequestScreen(permissionState)
                 }
+            }
             }
         }
     }

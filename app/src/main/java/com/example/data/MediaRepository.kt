@@ -25,8 +25,37 @@ data class MediaModel(
 )
 
 class MediaRepository(private val context: Context, private val dao: MediaDao) {
+
+    private fun copyDemoFilesIfNeeded() {
+        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("demos_copied", false)) {
+            try {
+                val audioFile = File(context.getExternalFilesDir(null), "Preview_Audio.mp3")
+                val videoFile = File(context.getExternalFilesDir(null), "Preview_Video.mp4")
+                if (!audioFile.exists()) {
+                    context.resources.openRawResource(context.resources.getIdentifier("demo_audio", "raw", context.packageName)).use { input ->
+                        audioFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                if (!videoFile.exists()) {
+                    context.resources.openRawResource(context.resources.getIdentifier("demo_video", "raw", context.packageName)).use { input ->
+                        videoFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                prefs.edit().putBoolean("demos_copied", true).apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     val favorites = dao.getAllFavorites()
     val playlists = dao.getAllPlaylists()
+    val allPlaylistMedia = dao.getAllPlaylistMedia()
     val hiddenMedia = dao.getAllHiddenMedia()
     val mediaMetadata = dao.getAllMetadata()
 
@@ -73,6 +102,8 @@ class MediaRepository(private val context: Context, private val dao: MediaDao) {
     }
 
     suspend fun loadAudioFiles(): List<MediaModel> = withContext(Dispatchers.IO) {
+        copyDemoFilesIfNeeded()
+
         val list = mutableListOf<MediaModel>()
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
@@ -107,24 +138,44 @@ class MediaRepository(private val context: Context, private val dao: MediaDao) {
             }
         }
         
-        // Also check our local extracted mp3 files if they are not in mediastore yet
-        val extractedDir = File(context.getExternalFilesDir(null), "ExtractedAudio")
-        if (extractedDir.exists()) {
-            extractedDir.listFiles()?.forEach { file ->
-                if (file.extension == "mp3" && !list.any { it.filePath == file.absolutePath }) {
-                    list.add(
-                        MediaModel(
-                            id = file.hashCode().toLong(),
-                            uri = Uri.fromFile(file),
-                            filePath = file.absolutePath,
-                            title = file.nameWithoutExtension,
-                            duration = 0L, // We don't have duration immediately without MediaMetadataRetriever
-                            type = "AUDIO"
+        // Also check our local extracted mp3/m4a audio files if they are not in mediastore yet
+        val localDirs = listOfNotNull(
+            context.getExternalFilesDir(null),
+            context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC)
+        )
+        val validAudioExtensions = setOf("mp3", "m4a", "aac", "wav", "ogg")
+        
+        localDirs.forEach { dir ->
+            if (dir.exists()) {
+                dir.listFiles()?.forEach { file ->
+                    if (file.isFile && file.extension.lowercase() in validAudioExtensions && !list.any { it.filePath == file.absolutePath }) {
+                        var duration = 0L
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(file.absolutePath)
+                            val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            duration = dStr?.toLongOrNull() ?: 0L
+                        } catch (e: Exception) {
+                            // ignore fallback
+                        } finally {
+                            try { retriever.release() } catch (e: Exception) {}
+                        }
+                        
+                        list.add(
+                            MediaModel(
+                                id = file.hashCode().toLong(),
+                                uri = Uri.fromFile(file),
+                                filePath = file.absolutePath,
+                                title = file.nameWithoutExtension.replace("_audio", ""),
+                                duration = duration,
+                                type = "AUDIO"
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
+
         
         list
     }
@@ -160,6 +211,24 @@ class MediaRepository(private val context: Context, private val dao: MediaDao) {
                 if (File(filePath).exists()) {
                     val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
                     list.add(MediaModel(id, uri, filePath, title, duration, "VIDEO"))
+                }
+            }
+        }
+
+        val localDir = context.getExternalFilesDir(null)
+        if (localDir != null && localDir.exists()) {
+            localDir.listFiles()?.forEach { file ->
+                if (file.extension.lowercase() == "mp4" && !list.any { it.filePath == file.absolutePath }) {
+                    list.add(
+                        MediaModel(
+                            id = file.hashCode().toLong(),
+                            uri = Uri.fromFile(file),
+                            filePath = file.absolutePath,
+                            title = file.nameWithoutExtension,
+                            duration = 0L,
+                            type = "VIDEO"
+                        )
+                    )
                 }
             }
         }
