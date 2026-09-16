@@ -1,0 +1,6 @@
+{
+  "name": "Local Media",
+  "description": "A comprehensive local media player for viewing videos in a TikTok-style vertical scroll and listening to MP3s with a traditional music player experience.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
