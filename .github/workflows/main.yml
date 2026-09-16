@@ -21,9 +21,21 @@ jobs:
     - name: Generate Missing Gradlew File
       run: gradle wrapper
 
-    - name: Build Android APK (Bypass KSP Graphic Error)
+    - name: Generate Auto Debug Keystore
+      run: |
+        keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+    - name: Build Android APK
       env:
-        GRADLE_OPTS: "-Djava.awt.headless=true -Dkotlin.compiler.execution.strategy=in-process"
+        GRADLE_OPTS: "-Djava.awt.headless=true"
       run: |
         chmod +x gradlew
         ./gradlew assembleDebug --stacktrace -Djava.awt.headless=true
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: music-app-apk
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          build/outputs/apk/debug/app-debug.apk
