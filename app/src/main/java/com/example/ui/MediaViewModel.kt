@@ -268,14 +268,84 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     val selectedAudios = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+    val customVideoPlaybackList = kotlinx.coroutines.flow.MutableStateFlow<List<MediaModel>>(emptyList())
+
+    fun setCustomVideoList(list: List<MediaModel>) {
+        customVideoPlaybackList.value = list
+    }
+    
     fun toggleSelection(filePath: String) {
         val current = selectedAudios.value.toMutableSet()
         if (current.contains(filePath)) current.remove(filePath) else current.add(filePath)
         selectedAudios.value = current
     }
+    
+    fun selectAll(filePaths: List<String>) {
+        selectedAudios.value = filePaths.toSet()
+    }
+
     fun clearSelection() {
         selectedAudios.value = emptySet()
     }
+
+    fun addSelectedToFavorites() {
+        val selected = selectedAudios.value.toList()
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            val allMedia = _audioFiles.value + _videoFiles.value
+            var addedCount = 0
+            selected.forEach { path ->
+                val media = allMedia.find { it.filePath == path }
+                if (media != null) {
+                    repository.addFavorite(media)
+                    addedCount++
+                }
+            }
+            clearSelection()
+            val context = getApplication<Application>()
+            android.widget.Toast.makeText(context, "تمت إضافة $addedCount عنصر إلى المفضلة ❤️", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun playSelectedVideos(onLaunch: (String) -> Unit) {
+        val selected = selectedAudios.value
+        val videos = _videoFiles.value.filter { it.filePath in selected }
+        if (videos.isNotEmpty()) {
+            customVideoPlaybackList.value = videos
+            clearSelection()
+            onLaunch(videos.first().filePath)
+        }
+    }
+
+    fun createPlaylistAndAddMedia(name: String, mediaPaths: List<String>, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val newId = repository.createPlaylist(name)
+            var count = 0
+            mediaPaths.forEach { path ->
+                repository.addMediaToPlaylist(newId, path)
+                count++
+            }
+            val context = getApplication<Application>()
+            android.widget.Toast.makeText(context, "تم إنشاء قائمة \"$name\" وإضافة $count عنصر إليها ✨", android.widget.Toast.LENGTH_SHORT).show()
+            clearSelection()
+            onDone()
+        }
+    }
+
+    fun addMultipleMediaToPlaylist(playlistId: Long, playlistName: String, mediaPaths: List<String>, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            var count = 0
+            mediaPaths.forEach { path ->
+                repository.addMediaToPlaylist(playlistId, path)
+                count++
+            }
+            val context = getApplication<Application>()
+            android.widget.Toast.makeText(context, "تمت إضافة $count عنصر إلى قائمة \"$playlistName\" بنجاح 👍", android.widget.Toast.LENGTH_SHORT).show()
+            clearSelection()
+            onDone()
+        }
+    }
+
     fun playNextPaths(paths: List<String>) {
         val models = _audioFiles.value.filter { it.filePath in paths }
         playNext(models)

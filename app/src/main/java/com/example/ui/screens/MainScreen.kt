@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,8 @@ fun MainScreen(
     onNavigateToPlayer: () -> Unit,
     onNavigateToVideoPlayer: (String) -> Unit,
     onNavigateToPlaylist: (Long) -> Unit,
+    onNavigateToPlaylists: () -> Unit = {},
+    onNavigateToVideos: () -> Unit = {},
     onNavigateToSettings: () -> Unit,
     onNavigateToArtists: () -> Unit = {},
     onNavigateToFavorites: () -> Unit = {}
@@ -35,13 +38,57 @@ fun MainScreen(
     val selectionMode = selectedItems.isNotEmpty()
     var selectedTab by remember { mutableStateOf(1) } // 0: Videos, 1: Songs, 2: Playlists
     var nightVibesTab by remember { mutableStateOf(0) } // 0: Home, 1: Explore, 2: Library
+
+    BackHandler(enabled = selectionMode) {
+        viewModel.clearSelection()
+    }
+
+    if (!selectionMode) {
+        if (isNightVibes) {
+            BackHandler(enabled = nightVibesTab != 0) {
+                nightVibesTab = 0
+            }
+        } else {
+            BackHandler(enabled = selectedTab != 1) {
+                selectedTab = 1
+            }
+        }
+    }
     
     val context = LocalContext.current
     var showPlaylistDialog by remember { mutableStateOf(false) }
 
+    val hasSelectedVideos = remember(selectedItems) {
+        val videos = viewModel.rawVideoFiles.value
+        selectedItems.any { path -> videos.any { it.filePath == path } }
+    }
+
     if (isNightVibes) {
         Scaffold(
             containerColor = Color(0xFF0B0F19),
+            topBar = {
+                if (selectionMode) {
+                    TopAppBar(
+                        title = { Text("${selectedItems.size} محددة", color = Color.White, style = MaterialTheme.typography.titleMedium) },
+                        navigationIcon = {
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Filled.Close, "إلغاء", tint = Color.White)
+                            }
+                        },
+                        actions = {
+                            TextButton(
+                                onClick = {
+                                    val allPaths = (viewModel.rawAudioFiles.value + viewModel.rawVideoFiles.value).map { it.filePath }
+                                    viewModel.selectAll(allPaths)
+                                }
+                            ) {
+                                Text("تحديد الكل", color = Color(0xFF38BDF8))
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13182C))
+                    )
+                }
+            },
             bottomBar = {
                 Column(modifier = Modifier.navigationBarsPadding()) {
                     if (selectionMode) {
@@ -49,14 +96,26 @@ fun MainScreen(
                             containerColor = Color(0xFF161F30),
                             contentColor = Color.White
                         ) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                ActionButton(Icons.Filled.Delete, "حذف") {
-                                    viewModel.deleteMediaFiles(selectedItems.toList())
-                                    viewModel.clearSelection()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ActionButton(Icons.Filled.Favorite, "المفضلة") {
+                                    viewModel.addSelectedToFavorites()
                                 }
-                                ActionButton(Icons.Filled.VisibilityOff, "إخفاء") {
-                                    selectedItems.forEach { viewModel.hideMedia(it) }
-                                    viewModel.clearSelection()
+                                ActionButton(Icons.Filled.PlaylistAdd, "إضافة لقائمة") { showPlaylistDialog = true }
+                                if (hasSelectedVideos) {
+                                    ActionButton(Icons.Filled.PlayCircle, "عرض كتيك توك") {
+                                        viewModel.playSelectedVideos { uri ->
+                                            onNavigateToVideoPlayer(uri)
+                                        }
+                                    }
+                                } else {
+                                    ActionButton(Icons.Filled.QueueMusic, "تشغيل تالياً") {
+                                        viewModel.playNextPaths(selectedItems.toList())
+                                        viewModel.clearSelection()
+                                    }
                                 }
                                 ActionButton(Icons.Filled.Share, "مشاركة") {
                                     val uris = ArrayList(selectedItems.map { android.net.Uri.parse(it) })
@@ -67,11 +126,14 @@ fun MainScreen(
                                     context.startActivity(Intent.createChooser(intent, "Share"))
                                     viewModel.clearSelection()
                                 }
-                                ActionButton(Icons.Filled.QueueMusic, "تشغيل تالياً") {
-                                    viewModel.playNextPaths(selectedItems.toList())
+                                ActionButton(Icons.Filled.VisibilityOff, "إخفاء") {
+                                    selectedItems.forEach { viewModel.hideMedia(it) }
                                     viewModel.clearSelection()
                                 }
-                                ActionButton(Icons.Filled.PlaylistAdd, "إضافة إلى") { showPlaylistDialog = true }
+                                ActionButton(Icons.Filled.Delete, "حذف") {
+                                    viewModel.deleteMediaFiles(selectedItems.toList())
+                                    viewModel.clearSelection()
+                                }
                             }
                         }
                     } else {
@@ -135,20 +197,12 @@ fun MainScreen(
                     0 -> NightVibesHomeScreen(
                         viewModel = viewModel,
                         onNavigateToFavorites = onNavigateToFavorites,
-                        onNavigateToPlaylists = {
-                            val firstPlaylist = viewModel.playlists.value.firstOrNull()
-                            if (firstPlaylist != null) onNavigateToPlaylist(firstPlaylist.id)
-                            else nightVibesTab = 2
-                        },
+                        onNavigateToPlaylists = onNavigateToPlaylists,
                         onNavigateToArtists = onNavigateToArtists,
                         onNavigateToExplore = { nightVibesTab = 1 },
                         onNavigateToPlayer = onNavigateToPlayer,
                         onNavigateToPlaylistDetails = onNavigateToPlaylist,
-                        onNavigateToVideos = {
-                            val firstVideo = viewModel.videoFiles.value.firstOrNull()
-                            if (firstVideo != null) onNavigateToVideoPlayer(firstVideo.filePath)
-                            else onNavigateToVideoPlayer("")
-                        }
+                        onNavigateToVideos = onNavigateToVideos
                     )
                     1 -> ExploreScreen(
                         viewModel = viewModel,
@@ -157,18 +211,10 @@ fun MainScreen(
                     2 -> LibraryScreen(
                         viewModel = viewModel,
                         onNavigateToFavorites = onNavigateToFavorites,
-                        onNavigateToPlaylists = {
-                            val firstPlaylist = viewModel.playlists.value.firstOrNull()
-                            if (firstPlaylist != null) onNavigateToPlaylist(firstPlaylist.id)
-                            else selectedTab = 2
-                        },
+                        onNavigateToPlaylists = onNavigateToPlaylists,
                         onNavigateToSettings = onNavigateToSettings,
                         onNavigateToPlayer = onNavigateToPlayer,
-                        onNavigateToVideos = {
-                            val firstVideo = viewModel.videoFiles.value.firstOrNull()
-                            if (firstVideo != null) onNavigateToVideoPlayer(firstVideo.filePath)
-                            else onNavigateToVideoPlayer("")
-                        }
+                        onNavigateToVideos = onNavigateToVideos
                     )
                 }
             }
@@ -182,7 +228,21 @@ fun MainScreen(
                     title = { Text("${selectedItems.size} محددة", color = MaterialTheme.colorScheme.onBackground) },
                     navigationIcon = {
                         IconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(Icons.Filled.ArrowForward, "إلغاء", tint = MaterialTheme.colorScheme.onBackground)
+                            Icon(Icons.Filled.Close, "إلغاء", tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                val currentList = when (selectedTab) {
+                                    0 -> viewModel.rawVideoFiles.value.map { it.filePath }
+                                    1 -> viewModel.rawAudioFiles.value.map { it.filePath }
+                                    else -> (viewModel.rawAudioFiles.value + viewModel.rawVideoFiles.value).map { it.filePath }
+                                }
+                                viewModel.selectAll(currentList)
+                            }
+                        ) {
+                            Text("تحديد الكل", color = MaterialTheme.colorScheme.primary)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -280,29 +340,27 @@ fun MainScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        ActionButton(Icons.Filled.Delete, "حذف") {
-                            viewModel.deleteMediaFiles(selectedItems.toList())
-                            viewModel.clearSelection()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ActionButton(Icons.Filled.Favorite, "المفضلة") {
+                            viewModel.addSelectedToFavorites()
                         }
-                        ActionButton(Icons.Filled.VisibilityOff, "إخفاء") {
-                            selectedItems.forEach { viewModel.hideMedia(it) }
-                            viewModel.clearSelection()
-                        }
-                        ActionButton(Icons.Filled.Share, "مشاركة") {
-                            val uris = ArrayList(selectedItems.map { android.net.Uri.parse(it) })
-                            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                                type = "audio/*"
-                                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                        ActionButton(Icons.Filled.PlaylistAdd, "إضافة لقائمة") { showPlaylistDialog = true }
+                        if (hasSelectedVideos) {
+                            ActionButton(Icons.Filled.PlayCircle, "عرض كتيك توك") {
+                                viewModel.playSelectedVideos { uri ->
+                                    onNavigateToVideoPlayer(uri)
+                                }
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share"))
-                            viewModel.clearSelection()
+                        } else {
+                            ActionButton(Icons.Filled.QueueMusic, "تشغيل تالياً") {
+                                viewModel.playNextPaths(selectedItems.toList())
+                                viewModel.clearSelection()
+                            }
                         }
-                        ActionButton(Icons.Filled.QueueMusic, "تشغيل تالياً") {
-                            viewModel.playNextPaths(selectedItems.toList())
-                            viewModel.clearSelection()
-                        }
-                        ActionButton(Icons.Filled.PlaylistAdd, "إضافة إلى") { showPlaylistDialog = true }
                         if (selectedTab == 0) {
                             ActionButton(Icons.Filled.MusicVideo, "تحويل لـ MP3") {
                                 val videos = viewModel.rawVideoFiles.value
@@ -313,6 +371,23 @@ fun MainScreen(
                                 }
                                 viewModel.clearSelection()
                             }
+                        }
+                        ActionButton(Icons.Filled.Share, "مشاركة") {
+                            val uris = ArrayList(selectedItems.map { android.net.Uri.parse(it) })
+                            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                type = "media/*"
+                                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share"))
+                            viewModel.clearSelection()
+                        }
+                        ActionButton(Icons.Filled.VisibilityOff, "إخفاء") {
+                            selectedItems.forEach { viewModel.hideMedia(it) }
+                            viewModel.clearSelection()
+                        }
+                        ActionButton(Icons.Filled.Delete, "حذف") {
+                            viewModel.deleteMediaFiles(selectedItems.toList())
+                            viewModel.clearSelection()
                         }
                     }
                 }
@@ -325,7 +400,11 @@ fun MainScreen(
             when (selectedTab) {
                 0 -> VideoScreen(viewModel, onNavigateToVideoPlayer = onNavigateToVideoPlayer)
                 1 -> AudioScreen(viewModel, onNavigateToPlayer)
-                2 -> PlaylistsScreen(viewModel, onNavigateToPlaylist = onNavigateToPlaylist)
+                2 -> PlaylistsScreen(
+                    viewModel = viewModel,
+                    onNavigateToPlaylist = onNavigateToPlaylist,
+                    onNavigateToFavorites = onNavigateToFavorites
+                )
             }
         }
     }

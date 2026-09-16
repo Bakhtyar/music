@@ -1,11 +1,14 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +47,13 @@ fun PlaylistDetailsScreen(
     
     val mediaFlow = remember(playlistId) { viewModel.getPlaylistMediaFiles(playlistId) }
     val playlistMedia by mediaFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    
+    val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
+    val selectionMode = selectedItems.isNotEmpty()
+
+    BackHandler(enabled = selectionMode) {
+        viewModel.clearSelection()
+    }
     
     var showAddSongsDialog by remember { mutableStateOf(false) }
     var showCoverDialog by remember { mutableStateOf(false) }
@@ -303,27 +313,43 @@ fun PlaylistDetailsScreen(
                     }
 
                     items(playlistMedia, key = { it.filePath }) { media ->
+                        val isSelected = selectedItems.contains(media.filePath)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clickable {
-                                    if (media.type == "AUDIO") {
-                                        val audiosInPlaylist = playlistMedia.filter { it.type == "AUDIO" }
-                                        val index = audiosInPlaylist.indexOf(media).coerceAtLeast(0)
-                                        PlayerManager.exoPlayer?.let { player ->
-                                            player.setMediaItems(audiosInPlaylist.map { MediaItem.fromUri(it.uri) })
-                                            player.seekTo(index, 0L)
-                                            player.prepare()
-                                            player.play()
+                                .then(
+                                    @OptIn(ExperimentalFoundationApi::class)
+                                    Modifier.combinedClickable(
+                                        onClick = {
+                                            if (selectionMode) {
+                                                viewModel.toggleSelection(media.filePath)
+                                            } else {
+                                                if (media.type == "AUDIO") {
+                                                    val audiosInPlaylist = playlistMedia.filter { it.type == "AUDIO" }
+                                                    val index = audiosInPlaylist.indexOf(media).coerceAtLeast(0)
+                                                    PlayerManager.exoPlayer?.let { player ->
+                                                        player.setMediaItems(audiosInPlaylist.map { MediaItem.fromUri(it.uri) })
+                                                        player.seekTo(index, 0L)
+                                                        player.prepare()
+                                                        player.play()
+                                                    }
+                                                    onNavigateToPlayer()
+                                                } else {
+                                                    onNavigateToVideoPlayer(media.filePath, playlistId)
+                                                }
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleSelection(media.filePath)
                                         }
-                                        onNavigateToPlayer()
-                                    } else {
-                                        onNavigateToVideoPlayer(media.filePath, playlistId)
-                                    }
-                                },
+                                    )
+                                ),
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) Color(0xFF38BDF8).copy(alpha = 0.15f) else Color(0xFF1E1E1E)
+                            ),
+                            border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8)) else null
                         ) {
                             Row(
                                 modifier = Modifier
@@ -331,6 +357,16 @@ fun PlaylistDetailsScreen(
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (selectionMode) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color(0xFF38BDF8) else Color.Gray,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
@@ -365,7 +401,7 @@ fun PlaylistDetailsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         media.title,
-                                        color = Color.White,
+                                        color = if (isSelected) Color(0xFF38BDF8) else Color.White,
                                         style = MaterialTheme.typography.bodyLarge,
                                         maxLines = 1
                                     )
@@ -376,15 +412,17 @@ fun PlaylistDetailsScreen(
                                     )
                                 }
 
-                                IconButton(onClick = {
-                                    viewModel.removeMediaFromPlaylist(playlistId, media.filePath)
-                                }) {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription = "إزالة من القائمة",
-                                        tint = Color.Gray,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                if (!selectionMode) {
+                                    IconButton(onClick = {
+                                        viewModel.removeMediaFromPlaylist(playlistId, media.filePath)
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = "إزالة من القائمة",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

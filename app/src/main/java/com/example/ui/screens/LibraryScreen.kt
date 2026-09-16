@@ -1,8 +1,11 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,6 +43,13 @@ fun LibraryScreen(
     val videos by viewModel.videoFiles.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
+    val selectionMode = selectedItems.isNotEmpty()
+
+    BackHandler(enabled = selectionMode) {
+        viewModel.clearSelection()
+    }
+
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -201,17 +211,27 @@ fun LibraryScreen(
                 recentAudios
             }
 
-            items(displayList) { song ->
+            items(displayList, key = { it.filePath }) { song ->
+                val isSelected = selectedItems.contains(song.filePath)
                 SongRowItem(
                     song = song,
+                    isSelected = isSelected,
+                    selectionMode = selectionMode,
                     onClick = {
-                        val player = PlayerManager.initPlayer(viewModel.getApplication())
-                        player.stop()
-                        player.clearMediaItems()
-                        player.setMediaItem(MediaItem.fromUri(song.uri))
-                        player.prepare()
-                        player.play()
-                        onNavigateToPlayer()
+                        if (selectionMode) {
+                            viewModel.toggleSelection(song.filePath)
+                        } else {
+                            val player = PlayerManager.initPlayer(viewModel.getApplication())
+                            player.stop()
+                            player.clearMediaItems()
+                            player.setMediaItem(MediaItem.fromUri(song.uri))
+                            player.prepare()
+                            player.play()
+                            onNavigateToPlayer()
+                        }
+                    },
+                    onLongClick = {
+                        viewModel.toggleSelection(song.filePath)
                     }
                 )
             }
@@ -270,19 +290,45 @@ fun LibraryFeatureCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SongRowItem(
     song: MediaModel,
-    onClick: () -> Unit
+    isSelected: Boolean = false,
+    selectionMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .background(if (isSelected) Color(0xFF38BDF8).copy(alpha = 0.15f) else Color.Transparent)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    )
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
             .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selectionMode) {
+            Icon(
+                imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                contentDescription = null,
+                tint = if (isSelected) Color(0xFF38BDF8) else Color.Gray,
+                modifier = Modifier
+                    .size(24.dp)
+                    .padding(end = 4.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+
         // Thumbnail
         Box(
             modifier = Modifier
@@ -313,7 +359,7 @@ fun SongRowItem(
             Text(
                 song.title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = if (isSelected) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1
             )
             Spacer(modifier = Modifier.height(2.dp))
@@ -333,11 +379,13 @@ fun SongRowItem(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        Icon(
-            Icons.Filled.ChevronLeft,
-            contentDescription = "تشغيل",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp)
-        )
+        if (!selectionMode) {
+            Icon(
+                Icons.Filled.ChevronLeft,
+                contentDescription = "تشغيل",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }

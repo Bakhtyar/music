@@ -24,9 +24,28 @@ fun AppNavigation(viewModel: MediaViewModel) {
                         navController.navigate("swipe_video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}")
                     },
                     onNavigateToPlaylist = { id -> navController.navigate("playlist_details/$id") },
+                    onNavigateToPlaylists = { navController.navigate("playlists") },
+                    onNavigateToVideos = { navController.navigate("videos_list") },
                     onNavigateToSettings = { navController.navigate("theme_settings") },
                     onNavigateToArtists = { navController.navigate("artists") },
                     onNavigateToFavorites = { navController.navigate("favorites") }
+                )
+            }
+            composable("videos_list") {
+                VideosListScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToVideoPlayer = { uri ->
+                        navController.navigate("swipe_video_player/${java.net.URLEncoder.encode(uri, "UTF-8")}")
+                    }
+                )
+            }
+            composable("playlists") {
+                PlaylistsScreen(
+                    viewModel = viewModel,
+                    onNavigateToPlaylist = { id -> navController.navigate("playlist_details/$id") },
+                    onNavigateToFavorites = { navController.navigate("favorites") },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable("favorites") {

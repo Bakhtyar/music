@@ -83,8 +83,8 @@ class MediaRepository(private val context: Context, private val dao: MediaDao) {
         dao.removeFavorite(filePath)
     }
 
-    suspend fun createPlaylist(name: String) {
-        dao.addPlaylist(PlaylistEntity(name = name))
+    suspend fun createPlaylist(name: String): Long {
+        return dao.addPlaylist(PlaylistEntity(name = name))
     }
 
     suspend fun deletePlaylist(id: Long) {

@@ -39,6 +39,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -70,13 +74,22 @@ fun SwipeVideoPlayerScreen(
     playlistId: Long? = null,
     onNavigateBack: () -> Unit
 ) {
+    val customList by viewModel.customVideoPlaybackList.collectAsStateWithLifecycle()
     val rawVideos by viewModel.videoFiles.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val playlistMedia by (if (playlistId != null && playlistId != -1L) viewModel.getPlaylistMediaFiles(playlistId) else remember { kotlinx.coroutines.flow.flowOf(emptyList()) })
         .collectAsStateWithLifecycle(initialValue = emptyList())
     
-    val baseList = remember(playlistId, playlistMedia, rawVideos, favorites) {
-        if (playlistId == -1L) {
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.setCustomVideoList(emptyList())
+        }
+    }
+
+    val baseList = remember(customList, playlistId, playlistMedia, rawVideos, favorites) {
+        if (customList.isNotEmpty()) {
+            customList
+        } else if (playlistId == -1L) {
             val favPaths = favorites.filter { it.mediaType == "VIDEO" }.map { it.filePath }.toSet()
             rawVideos.filter { it.filePath in favPaths }
         } else if (playlistId != null) {
@@ -140,6 +153,11 @@ fun SwipeVideoPlayerScreen(
 
     val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { baseList.size })
     val scope = rememberCoroutineScope()
+
+    DisposableEffect(Unit) {
+        com.example.player.PlayerManager.exoPlayer?.pause()
+        onDispose { }
+    }
 
     Box(
         modifier = Modifier
@@ -388,7 +406,15 @@ fun TikTokVideoPlayerItem(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Instant thumbnail poster backdrop (avoids any black screen or jank)
+        AsyncImage(
+            model = video.uri,
+            contentDescription = null,
+            contentScale = if (isFitMode) ContentScale.Fit else ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
         // Video View
         exoPlayer?.let { player ->
             AndroidView(
@@ -396,6 +422,7 @@ fun TikTokVideoPlayerItem(
                     PlayerView(ctx).apply {
                         this.player = player
                         useController = false // Custom TikTok UI controls
+                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                         resizeMode = if (isFitMode) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -699,80 +726,85 @@ fun TikTokVideoPlayerItem(
             }
         }
 
-        // Interactive video seek / extension bar (TikTok style: elevated above navigation buttons with generous touch zone)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 8.dp)
-                .fillMaxWidth()
-                .height(48.dp)
-                .pointerInput(duration) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        down.consume()
-                        
-                        if (duration > 0) {
-                            isScrubbing = true
-                            var currentRatio = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            scrubRatio = currentRatio
+        // Interactive video seek / extension bar (TikTok RTL style: 0% at Right -> 100% at Left)
+        // Dragging towards the left moves forward, dragging towards the right rewinds
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .pointerInput(duration) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            
+                            if (duration > 0) {
+                                isScrubbing = true
+                                // In RTL: right edge (x near width) is 0%, left edge (x near 0) is 100%
+                                var currentRatio = (1f - (down.position.x / size.width.toFloat())).coerceIn(0f, 1f)
+                                scrubRatio = currentRatio
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
-                                
-                                if (change == null || !change.pressed) {
-                                    // Pointer released
-                                    val targetMs = (scrubRatio * duration).toLong().coerceIn(0L, duration)
-                                    exoPlayer?.seekTo(targetMs)
-                                    currentPosition = targetMs
-                                    isScrubbing = false
-                                    break
-                                } else {
-                                    change.consume()
-                                    currentRatio = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    scrubRatio = currentRatio
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
+                                    
+                                    if (change == null || !change.pressed) {
+                                        // Pointer released
+                                        val targetMs = (scrubRatio * duration).toLong().coerceIn(0L, duration)
+                                        exoPlayer?.seekTo(targetMs)
+                                        currentPosition = targetMs
+                                        isScrubbing = false
+                                        break
+                                    } else {
+                                        change.consume()
+                                        currentRatio = (1f - (change.position.x / size.width.toFloat())).coerceIn(0f, 1f)
+                                        scrubRatio = currentRatio
+                                    }
                                 }
                             }
                         }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-                    .height(barHeight)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.White.copy(alpha = if (isScrubbing) 0.4f else 0.25f))
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                val fullWidth = maxWidth
-                val activeWidth = fullWidth * currentRatio
-
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(activeWidth)
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .height(barHeight)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(Color(0xFF00C6FF), Color(0xFF0072FF), Color(0xFF38BDF8))
-                            )
-                        )
-                )
+                        .background(Color.White.copy(alpha = if (isScrubbing) 0.4f else 0.25f))
+                ) {
+                    val fullWidth = maxWidth
+                    val activeWidth = fullWidth * currentRatio
 
-                if (thumbAlpha > 0f) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = (activeWidth - 7.dp).coerceAtLeast(0.dp))
-                            .size(14.dp)
-                            .graphicsLayer { alpha = thumbAlpha }
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(2.dp, Color(0xFF38BDF8), CircleShape)
+                            .align(Alignment.CenterStart) // In RTL, CenterStart is the RIGHT edge
+                            .fillMaxHeight()
+                            .width(activeWidth)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF38BDF8), Color(0xFF00C6FF), Color(0xFF0072FF))
+                                )
+                            )
                     )
+
+                    if (thumbAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart) // In RTL, CenterStart is the RIGHT edge
+                                .offset(x = (activeWidth - 7.dp).coerceAtLeast(0.dp))
+                                .size(14.dp)
+                                .graphicsLayer { alpha = thumbAlpha }
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(2.dp, Color(0xFF38BDF8), CircleShape)
+                        )
+                    }
                 }
             }
         }

@@ -473,18 +473,31 @@ fun NightVibesHomeScreen(
             audios.take(8)
         }
 
-        items(displayAudios) { audio ->
+        items(displayAudios, key = { it.filePath }) { audio ->
+            val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
+            val selectionMode = selectedItems.isNotEmpty()
+            val isSelected = selectedItems.contains(audio.filePath)
+
             Box(modifier = Modifier.padding(horizontal = 18.dp)) {
                 SongRowItem(
                     song = audio,
+                    isSelected = isSelected,
+                    selectionMode = selectionMode,
                     onClick = {
-                        val player = PlayerManager.initPlayer(viewModel.getApplication())
-                        player.stop()
-                        player.clearMediaItems()
-                        player.setMediaItem(MediaItem.fromUri(audio.uri))
-                        player.prepare()
-                        player.play()
-                        onNavigateToPlayer()
+                        if (selectionMode) {
+                            viewModel.toggleSelection(audio.filePath)
+                        } else {
+                            val player = PlayerManager.initPlayer(viewModel.getApplication())
+                            player.stop()
+                            player.clearMediaItems()
+                            player.setMediaItem(MediaItem.fromUri(audio.uri))
+                            player.prepare()
+                            player.play()
+                            onNavigateToPlayer()
+                        }
+                    },
+                    onLongClick = {
+                        viewModel.toggleSelection(audio.filePath)
                     }
                 )
             }

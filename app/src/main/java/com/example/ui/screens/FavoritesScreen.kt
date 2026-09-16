@@ -1,11 +1,14 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,6 +56,13 @@ fun FavoritesScreen(
     val favoriteVideos = remember(favorites, videoFiles) {
         val favPaths = favorites.filter { it.mediaType == "VIDEO" }.map { it.filePath }.toSet()
         videoFiles.filter { it.filePath in favPaths }
+    }
+
+    val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
+    val selectionMode = selectedItems.isNotEmpty()
+
+    BackHandler(enabled = selectionMode) {
+        viewModel.clearSelection()
     }
 
     var selectedTab by remember { mutableStateOf(0) } // 0: Songs, 1: Videos
@@ -279,22 +289,32 @@ fun FavoritesScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(favoriteAudios, key = { it.filePath }) { song ->
+                                val isSelected = selectedItems.contains(song.filePath)
                                 FavoriteSongCard(
                                     song = song,
+                                    isSelected = isSelected,
+                                    selectionMode = selectionMode,
                                     onPlay = {
-                                        PlayerManager.exoPlayer?.let { player ->
-                                            val index = favoriteAudios.indexOf(song).coerceAtLeast(0)
-                                            player.stop()
-                                            player.clearMediaItems()
-                                            player.setMediaItems(favoriteAudios.map { MediaItem.fromUri(it.uri) }, index, 0L)
-                                            player.prepare()
-                                            player.play()
+                                        if (selectionMode) {
+                                            viewModel.toggleSelection(song.filePath)
+                                        } else {
+                                            PlayerManager.exoPlayer?.let { player ->
+                                                val index = favoriteAudios.indexOf(song).coerceAtLeast(0)
+                                                player.stop()
+                                                player.clearMediaItems()
+                                                player.setMediaItems(favoriteAudios.map { MediaItem.fromUri(it.uri) }, index, 0L)
+                                                player.prepare()
+                                                player.play()
+                                            }
+                                            onNavigateToPlayer()
                                         }
-                                        onNavigateToPlayer()
                                     },
                                     onRemove = {
                                         viewModel.toggleFavorite(song)
                                         feedbackMessage = "تمت إزالة ${song.title} من المفضلة"
+                                    },
+                                    onToggleSelection = {
+                                        viewModel.toggleSelection(song.filePath)
                                     }
                                 )
                             }
@@ -357,19 +377,31 @@ fun FavoritesScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FavoriteSongCard(
     song: MediaModel,
+    isSelected: Boolean = false,
+    selectionMode: Boolean = false,
     onPlay: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onToggleSelection: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlay),
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = onToggleSelection
+            ),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF13182C)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Color(0xFF38BDF8).copy(alpha = 0.15f) else Color(0xFF13182C)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isSelected) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.06f)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -377,6 +409,15 @@ fun FavoriteSongCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (isSelected) Color(0xFF38BDF8) else Color.Gray,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+            }
             Box(
                 modifier = Modifier
                     .size(50.dp)
