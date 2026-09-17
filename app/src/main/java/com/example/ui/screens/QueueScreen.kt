@@ -37,8 +37,10 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
     var repeatMode by remember { mutableStateOf(player.repeatMode) }
     var shuffleMode by remember { mutableStateOf(player.shuffleModeEnabled) }
     val audios by viewModel.audioFiles.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     val queueItems = remember { mutableStateListOf<MediaModel>() }
+    var selectedMediaForPlaylist by remember { mutableStateOf<String?>(null) }
 
     // Synchronize queue items with player / audios
     LaunchedEffect(audios) {
@@ -78,11 +80,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
     val currentPlayingMedia = audios.find { it.uri.toString() == currentUri }
         ?: queueItems.firstOrNull()
 
-    var draggingIndex by remember { mutableStateOf<Int?>(null) }
-    var dragOffsetY by remember { mutableStateOf(0f) }
-    val density = LocalDensity.current
-    val itemHeightPx = with(density) { 72.dp.toPx() }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -118,7 +115,7 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
             }
         }
 
-        // Currently Playing Card / Bar (شريط الأيقونة الذي يشغل ويوقف الأغنية)
+        // Currently Playing Card / Bar
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -173,7 +170,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                     )
                 }
 
-                // Previous button
                 IconButton(onClick = { player.seekToPreviousMediaItem() }) {
                     Icon(
                         Icons.Filled.SkipPrevious,
@@ -183,7 +179,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                     )
                 }
 
-                // Play / Pause toggle button
                 FilledIconButton(
                     onClick = {
                         if (isPlaying) {
@@ -208,7 +203,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                     )
                 }
 
-                // Next button
                 IconButton(onClick = { player.seekToNextMediaItem() }) {
                     Icon(
                         Icons.Filled.SkipNext,
@@ -229,7 +223,7 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "الأغاني التالية (اسحب للترتيب)",
+                text = "الأغاني التالية (استخدم أزرار الترتيب للتحريك)",
                 color = Color(0xFFC7B1D0),
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -242,7 +236,7 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
 
         HorizontalDivider(color = Color(0xFF33203A), thickness = 1.dp)
 
-        // Reorderable LazyColumn
+        // LazyColumn for Queue
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -250,28 +244,15 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                 .padding(horizontal = 8.dp)
         ) {
             itemsIndexed(queueItems, key = { _, item -> item.filePath }) { index, audio ->
-                val isBeingDragged = draggingIndex == index
                 val isCurrentlyPlaying = audio.uri.toString() == currentUri
+                val isFav = favorites.any { it.filePath == audio.filePath }
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp, horizontal = 8.dp)
-                        .zIndex(if (isBeingDragged) 2f else 0f)
-                        .graphicsLayer {
-                            translationY = if (isBeingDragged) dragOffsetY else 0f
-                            shadowElevation = if (isBeingDragged) 16f else 0f
-                            scaleX = if (isBeingDragged) 1.03f else 1f
-                            scaleY = if (isBeingDragged) 1.03f else 1f
-                        }
                         .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            when {
-                                isBeingDragged -> Color(0xFF5D366B)
-                                isCurrentlyPlaying -> Color(0xFF3A2341)
-                                else -> Color(0xFF28192D)
-                            }
-                        )
+                        .background(if (isCurrentlyPlaying) Color(0xFF3A2341) else Color(0xFF28192D))
                         .clickable {
                             val targetIndex = queueItems.indexOf(audio)
                             if (targetIndex >= 0) {
@@ -286,7 +267,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Index or Playing Icon
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -312,7 +292,6 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    // Title & Artist
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = audio.title,
@@ -328,67 +307,79 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                         )
                     }
 
-                    // Drag Handle: Touch and drag up/down to reorder songs
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isBeingDragged) Color(0xFF864A9B) else Color(0xFF3A2442))
-                            .padding(8.dp)
-                            .pointerInput(audio.filePath, index) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        draggingIndex = index
-                                        dragOffsetY = 0f
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dragOffsetY += dragAmount.y
-                                        val currentIndex = draggingIndex ?: return@detectDragGestures
-                                        val threshold = itemHeightPx * 0.5f
-
-                                        if (dragOffsetY > threshold && currentIndex < queueItems.size - 1) {
-                                            val targetIndex = currentIndex + 1
-                                            val item = queueItems.removeAt(currentIndex)
-                                            queueItems.add(targetIndex, item)
-                                            try {
-                                                player.moveMediaItem(currentIndex, targetIndex)
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                            }
-                                            draggingIndex = targetIndex
-                                            dragOffsetY -= itemHeightPx
-                                        } else if (dragOffsetY < -threshold && currentIndex > 0) {
-                                            val targetIndex = currentIndex - 1
-                                            val item = queueItems.removeAt(currentIndex)
-                                            queueItems.add(targetIndex, item)
-                                            try {
-                                                player.moveMediaItem(currentIndex, targetIndex)
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                            }
-                                            draggingIndex = targetIndex
-                                            dragOffsetY += itemHeightPx
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        draggingIndex = null
-                                        dragOffsetY = 0f
-                                    },
-                                    onDragCancel = {
-                                        draggingIndex = null
-                                        dragOffsetY = 0f
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.Center
+                    // Favorite button
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(audio) },
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            Icons.Filled.DragHandle,
-                            contentDescription = "سحب لإعادة الترتيب",
-                            tint = if (isBeingDragged) Color.White else Color(0xFFD6BFDF),
-                            modifier = Modifier.size(24.dp)
+                            imageVector = Icons.Filled.Favorite,
+                            contentDescription = "المفضلة",
+                            tint = if (isFav) Color(0xFFFF2A6D) else Color.Gray,
+                            modifier = Modifier.size(20.dp)
                         )
+                    }
+
+                    // Add to Playlist button
+                    IconButton(
+                        onClick = { selectedMediaForPlaylist = audio.filePath },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlaylistAdd,
+                            contentDescription = "إضافة لقائمة",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Move Up / Move Down buttons for robust, lag-free reordering
+                    Column(
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (index > 0) {
+                                    val item = queueItems.removeAt(index)
+                                    queueItems.add(index - 1, item)
+                                    try {
+                                        player.moveMediaItem(index, index - 1)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            enabled = index > 0,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.KeyboardArrowUp,
+                                contentDescription = "تحريك لأعلى",
+                                tint = if (index > 0) Color.White else Color.Gray
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (index < queueItems.size - 1) {
+                                    val item = queueItems.removeAt(index)
+                                    queueItems.add(index + 1, item)
+                                    try {
+                                        player.moveMediaItem(index, index + 1)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            enabled = index < queueItems.size - 1,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "تحريك لأسفل",
+                                tint = if (index < queueItems.size - 1) Color.White else Color.Gray
+                            )
+                        }
                     }
                 }
             }
@@ -452,5 +443,13 @@ fun QueueScreen(viewModel: MediaViewModel, onNavigateBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (selectedMediaForPlaylist != null) {
+        com.example.ui.components.AddToPlaylistDialog(
+            mediaPaths = listOf(selectedMediaForPlaylist!!),
+            viewModel = viewModel,
+            onDismiss = { selectedMediaForPlaylist = null }
+        )
     }
 }

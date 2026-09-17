@@ -445,7 +445,7 @@ fun NightVibesHomeScreen(
                                 val player = PlayerManager.initPlayer(viewModel.getApplication())
                                 player.stop()
                                 player.clearMediaItems()
-                                player.addMediaItems(audios.take(5).map { MediaItem.fromUri(it.uri) })
+                                player.addMediaItems(audios.map { MediaItem.fromUri(it.uri) })
                                 player.prepare()
                                 player.play()
                                 onNavigateToPlayer()
@@ -470,7 +470,7 @@ fun NightVibesHomeScreen(
         val displayAudios = if (searchQuery.isNotEmpty()) {
             audios.filter { it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true) }
         } else {
-            audios.take(8)
+            audios
         }
 
         items(displayAudios, key = { it.filePath }) { audio ->

@@ -36,25 +36,13 @@ fun MainScreen(
 
     val selectedItems by viewModel.selectedAudios.collectAsStateWithLifecycle()
     val selectionMode = selectedItems.isNotEmpty()
-    var selectedTab by remember { mutableStateOf(1) } // 0: Videos, 1: Songs, 2: Playlists
-    var nightVibesTab by remember { mutableStateOf(0) } // 0: Home, 1: Explore, 2: Library
+    var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(1) } // 0: Videos, 1: Songs, 2: Playlists
+    var nightVibesTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) } // 0: Home, 1: Explore, 2: Library
 
     BackHandler(enabled = selectionMode) {
         viewModel.clearSelection()
     }
 
-    if (!selectionMode) {
-        if (isNightVibes) {
-            BackHandler(enabled = nightVibesTab != 0) {
-                nightVibesTab = 0
-            }
-        } else {
-            BackHandler(enabled = selectedTab != 1) {
-                selectedTab = 1
-            }
-        }
-    }
-    
     val context = LocalContext.current
     var showPlaylistDialog by remember { mutableStateOf(false) }
 
@@ -408,6 +396,7 @@ fun MainScreen(
             }
         }
     }
+    }
     
     if (showPlaylistDialog) {
         com.example.ui.components.AddToPlaylistDialog(
@@ -418,7 +407,6 @@ fun MainScreen(
                 viewModel.clearSelection()
             }
         )
-    }
     }
 }
 

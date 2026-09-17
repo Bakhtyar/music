@@ -53,63 +53,64 @@ fun LibraryScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val recentAudios = remember(audios) {
-        if (audios.isNotEmpty()) audios.take(10)
-        else emptyList()
-    }
+    val recentAudios = audios
+
+    var showPlaylistDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (isSearchActive) {
-                TopAppBar(
-                    title = {
-                        TextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("بحث في مكتبتك...", color = Color.Gray) },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            isSearchActive = false
-                            searchQuery = ""
-                        }) {
-                            Icon(Icons.Filled.ArrowBack, "إغلاق البحث", tint = Color.White)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                )
-            } else {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "مكتبتي",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { isSearchActive = true }) {
-                            Icon(Icons.Filled.Search, "بحث", tint = MaterialTheme.colorScheme.onBackground)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(Icons.Filled.Settings, "الإعدادات والمظهر", tint = MaterialTheme.colorScheme.onBackground)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                )
+            if (!selectionMode) {
+                if (isSearchActive) {
+                    TopAppBar(
+                        title = {
+                            TextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text("بحث في مكتبتك...", color = Color.Gray) },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                isSearchActive = false
+                                searchQuery = ""
+                            }) {
+                                Icon(Icons.Filled.ArrowBack, "إغلاق البحث", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                "مكتبتي",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { isSearchActive = true }) {
+                                Icon(Icons.Filled.Search, "بحث", tint = MaterialTheme.colorScheme.onBackground)
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(Icons.Filled.Settings, "الإعدادات والمظهر", tint = MaterialTheme.colorScheme.onBackground)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                }
             }
         }
     ) { padding ->
@@ -236,6 +237,17 @@ fun LibraryScreen(
                 )
             }
         }
+    }
+
+    if (showPlaylistDialog) {
+        com.example.ui.components.AddToPlaylistDialog(
+            mediaPaths = selectedItems.toList(),
+            viewModel = viewModel,
+            onDismiss = {
+                showPlaylistDialog = false
+                viewModel.clearSelection()
+            }
+        )
     }
 }
 
