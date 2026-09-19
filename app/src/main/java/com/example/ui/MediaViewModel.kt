@@ -181,6 +181,28 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun createPhotoPost(
+        title: String,
+        photoPaths: List<String>,
+        audioFilePath: String,
+        audioTitle: String,
+        duration: Long,
+        onSuccess: (Long) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val id = repository.createPhotoPost(title, photoPaths, audioFilePath, audioTitle, duration)
+            _videoFiles.value = repository.loadVideoFiles()
+            onSuccess(id)
+        }
+    }
+
+    fun deletePhotoPost(id: Long) {
+        viewModelScope.launch {
+            repository.deletePhotoPost(id)
+            _videoFiles.value = repository.loadVideoFiles()
+        }
+    }
+
     fun addMediaToPlaylist(playlistId: Long, filePath: String) {
         viewModelScope.launch {
             repository.addMediaToPlaylist(playlistId, filePath)

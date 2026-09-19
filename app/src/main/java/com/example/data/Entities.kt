@@ -46,3 +46,15 @@ data class SettingEntity(
     @PrimaryKey val key: String,
     val value: String
 )
+
+@Entity(tableName = "photo_posts")
+data class PhotoPostEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val photoPathsJson: String, // Comma-separated file paths of photos
+    val audioFilePath: String,
+    val audioTitle: String = "",
+    val duration: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis()
+)
+

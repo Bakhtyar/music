@@ -63,4 +63,17 @@ interface MediaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveMetadata(metadata: MediaMetadataEntity)
+
+    // Photo Posts (منشورات الصور)
+    @Query("SELECT * FROM photo_posts ORDER BY createdAt DESC")
+    fun getAllPhotoPosts(): Flow<List<PhotoPostEntity>>
+
+    @Query("SELECT * FROM photo_posts ORDER BY createdAt DESC")
+    suspend fun getPhotoPostsList(): List<PhotoPostEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addPhotoPost(post: PhotoPostEntity): Long
+
+    @Query("DELETE FROM photo_posts WHERE id = :id")
+    suspend fun deletePhotoPost(id: Long)
 }

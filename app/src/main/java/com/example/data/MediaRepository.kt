@@ -21,8 +21,12 @@ data class MediaModel(
     val type: String, // "AUDIO" or "VIDEO"
     val artist: String = "",
     val album: String = "",
-    val coverUri: String = ""
-)
+    val coverUri: String = "",
+    val photoPaths: List<String> = emptyList(),
+    val audioPath: String = ""
+) {
+    val isPhotoPost: Boolean get() = photoPaths.isNotEmpty()
+}
 
 class MediaRepository(private val context: Context, private val dao: MediaDao) {
 
@@ -232,6 +236,58 @@ class MediaRepository(private val context: Context, private val dao: MediaDao) {
                 }
             }
         }
+
+        // Include Photo Posts (منشورات صور التيك توك مع الموسيقى) as part of video items list
+        try {
+            val photoPosts = dao.getPhotoPostsList()
+            photoPosts.forEach { post ->
+                val paths = if (post.photoPathsJson.isNotBlank()) {
+                    post.photoPathsJson.split("||").filter { it.isNotBlank() }
+                } else emptyList()
+                if (paths.isNotEmpty()) {
+                    list.add(
+                        MediaModel(
+                            id = 5_000_000L + post.id,
+                            uri = Uri.parse("photopost://${post.id}"),
+                            filePath = "photopost://${post.id}",
+                            title = post.title.ifBlank { "منشور صور" },
+                            duration = post.duration,
+                            type = "VIDEO", // ضمن قائمة الفيديوهات والعشوائية
+                            artist = post.audioTitle.ifBlank { "موسيقى تيك توك" },
+                            album = "منشور صور",
+                            coverUri = paths.firstOrNull() ?: "",
+                            photoPaths = paths,
+                            audioPath = post.audioFilePath
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         list
+    }
+
+    suspend fun createPhotoPost(
+        title: String,
+        photoPaths: List<String>,
+        audioFilePath: String,
+        audioTitle: String,
+        duration: Long
+    ): Long {
+        val json = photoPaths.joinToString("||")
+        val post = PhotoPostEntity(
+            title = title,
+            photoPathsJson = json,
+            audioFilePath = audioFilePath,
+            audioTitle = audioTitle,
+            duration = duration
+        )
+        return dao.addPhotoPost(post)
+    }
+
+    suspend fun deletePhotoPost(id: Long) {
+        dao.deletePhotoPost(id)
     }
 }

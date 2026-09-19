@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistMediaCrossRef::class, SettingEntity::class, HiddenMediaEntity::class, MediaMetadataEntity::class],
-    version = 2,
+    entities = [FavoriteEntity::class, PlaylistEntity::class, PlaylistMediaCrossRef::class, SettingEntity::class, HiddenMediaEntity::class, MediaMetadataEntity::class, PhotoPostEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

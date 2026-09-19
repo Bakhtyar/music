@@ -37,6 +37,8 @@ import coil.compose.AsyncImage
 import com.example.data.MediaModel
 import com.example.ui.MediaViewModel
 import com.example.ui.components.AddToPlaylistDialog
+import com.example.ui.components.CreatePhotoPostDialog
+import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +61,7 @@ fun VideosListScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var isGridView by remember { mutableStateOf(true) }
     var showPlaylistDialog by remember { mutableStateOf(false) }
+    var showCreatePhotoPostDialog by remember { mutableStateOf(false) }
 
     val favoritePaths = remember(favorites) {
         favorites.filter { it.mediaType == "VIDEO" }.map { it.filePath }.toSet()
@@ -164,6 +167,13 @@ fun VideosListScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showCreatePhotoPostDialog = true }) {
+                            Icon(
+                                Icons.Filled.AddPhotoAlternate,
+                                contentDescription = "إنشاء منشور صور",
+                                tint = Color(0xFF38BDF8)
+                            )
+                        }
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(Icons.Filled.Search, "بحث", tint = Color.White)
                         }
@@ -176,6 +186,17 @@ fun VideosListScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13182C))
+                )
+            }
+        },
+        floatingActionButton = {
+            if (!selectionMode) {
+                ExtendedFloatingActionButton(
+                    onClick = { showCreatePhotoPostDialog = true },
+                    icon = { Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, tint = Color.Black) },
+                    text = { Text("منشور صور", color = Color.Black, fontWeight = FontWeight.Bold) },
+                    containerColor = Color(0xFF38BDF8),
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
         },
@@ -377,6 +398,16 @@ fun VideosListScreen(
             }
         )
     }
+
+    if (showCreatePhotoPostDialog) {
+        CreatePhotoPostDialog(
+            viewModel = viewModel,
+            onDismiss = { showCreatePhotoPostDialog = false },
+            onPostCreated = {
+                // Post created successfully
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -412,8 +443,15 @@ fun VideoGridCard(
                     .height(110.dp)
                     .background(Color(0xFF1E293B))
             ) {
+                val imageModel = if (video.isPhotoPost) {
+                    val firstPath = video.photoPaths.firstOrNull() ?: ""
+                    if (firstPath.startsWith("content://") || firstPath.startsWith("file://")) android.net.Uri.parse(firstPath) else File(firstPath)
+                } else {
+                    video.uri
+                }
+
                 AsyncImage(
-                    model = video.uri,
+                    model = imageModel,
                     contentDescription = video.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -438,7 +476,7 @@ fun VideoGridCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.PlayArrow,
+                        if (video.isPhotoPost) Icons.Filled.PhotoLibrary else Icons.Filled.PlayArrow,
                         contentDescription = "تشغيل",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
@@ -464,7 +502,23 @@ fun VideoGridCard(
                     }
                 }
 
-                if (video.duration > 0) {
+                if (video.isPhotoPost) {
+                    Surface(
+                        color = Color(0xFF38BDF8),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                    ) {
+                        Text(
+                            text = "${video.photoPaths.size} صور",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                } else if (video.duration > 0) {
                     Surface(
                         color = Color.Black.copy(alpha = 0.75f),
                         shape = RoundedCornerShape(4.dp),
@@ -507,7 +561,7 @@ fun VideoGridCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "فيديو MP4",
+                    text = if (video.isPhotoPost) "منشور صور • ♫ ${video.artist}" else "فيديو MP4",
                     color = Color(0xFF64748B),
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -562,8 +616,15 @@ fun VideoListRowItem(
                 .background(Color(0xFF1E293B)),
             contentAlignment = Alignment.Center
         ) {
+            val imageModel = if (video.isPhotoPost) {
+                val firstPath = video.photoPaths.firstOrNull() ?: ""
+                if (firstPath.startsWith("content://") || firstPath.startsWith("file://")) android.net.Uri.parse(firstPath) else File(firstPath)
+            } else {
+                video.uri
+            }
+
             AsyncImage(
-                model = video.uri,
+                model = imageModel,
                 contentDescription = video.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -577,14 +638,30 @@ fun VideoListRowItem(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.PlayArrow,
+                    if (video.isPhotoPost) Icons.Filled.PhotoLibrary else Icons.Filled.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(14.dp)
                 )
             }
 
-            if (video.duration > 0) {
+            if (video.isPhotoPost) {
+                Surface(
+                    color = Color(0xFF38BDF8),
+                    shape = RoundedCornerShape(3.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(3.dp)
+                ) {
+                    Text(
+                        text = "${video.photoPaths.size} صور",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                    )
+                }
+            } else if (video.duration > 0) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.75f),
                     shape = RoundedCornerShape(3.dp),
@@ -615,7 +692,7 @@ fun VideoListRowItem(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = if (video.duration > 0) formatDuration(video.duration) else "فيديو",
+                text = if (video.isPhotoPost) "منشور صور (${video.photoPaths.size} صور) • ♫ ${video.artist}" else if (video.duration > 0) formatDuration(video.duration) else "فيديو",
                 color = Color(0xFF64748B),
                 style = MaterialTheme.typography.labelSmall
             )
